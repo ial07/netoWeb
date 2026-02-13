@@ -16,12 +16,13 @@
 - [Architecture](#-architecture)
 - [Database Schema](#-database-schema)
 - [Pricing Engine](#-pricing-engine)
-- [How This Relates to Neto](#-how-this-relates-to-neto-template-customization)
+- [Neto Translation Guide](#-neto-translation-guide)
+- [Neto Platform Constraints & Optimization](#-neto-platform-constraints--optimization-awareness)
 - [Features](#-features)
 - [Setup Instructions](#-setup-instructions)
 - [API Reference](#-api-reference)
-- [Demo Credentials](#-demo-credentials)
-- [Screenshots](#-screenshots)
+- [How This Project Demonstrates Neto Readiness](#-how-this-project-demonstrates-neto-readiness)
+- [Neto Theme Simulator](#-neto-theme-simulator)
 - [Learning Roadmap for Neto](#-learning-roadmap-for-neto)
 
 ---
@@ -158,59 +159,144 @@ calculateProductPrice(product, quantity, isAuthenticated) → PricingResult
 applyBulkDiscount(subtotal, quantity) → number
 applyMemberDiscount(subtotal, isAuthenticated) → number
 calculateShipping(total) → ShippingResult
-calculateCartSummary(items, isAuthenticated) → CartSummaryData
+calculateTax(amount, taxRate?) → TaxResult
+applyPromoCode(code, orderTotal) → PromoResult
+calculateCartSummary(items, isAuthenticated, promoCode?) → CartSummaryData
 ```
 
 All functions return detailed breakdowns showing every discount applied, making it easy to display to users.
 
 ---
 
-## 🔗 How This Relates to Neto Template Customization
+## 🔗 Neto Translation Guide
 
-### Neto's Approach (Liquid Templates)
+This section maps every component of NetoStore to its Neto (Maropost Commerce Cloud) equivalent, demonstrating deep understanding of the platform's template system.
 
-Neto uses **Liquid-based templates** where business logic is embedded in template tags:
+### Component → Template Mapping
+
+| NetoStore Component                      | Neto Equivalent                         | Notes                        |
+| ---------------------------------------- | --------------------------------------- | ---------------------------- |
+| `src/app/page.tsx`                       | `page.home.template.html`               | Homepage with product grid   |
+| `src/app/product/[slug]/page.tsx`        | `page.product.template.html`            | Product detail with variants |
+| `src/app/cart/page.tsx`                  | `page.cart.template.html`               | Cart with pricing breakdown  |
+| `src/app/checkout/page.tsx`              | `page.checkout.template.html`           | Order review before payment  |
+| `src/app/checkout/confirmation/page.tsx` | `page.order-confirmation.template.html` | Post-purchase confirmation   |
+| `src/app/(auth)/login/page.tsx`          | Neto built-in auth                      | Handled by platform          |
+| `src/app/admin/page.tsx`                 | Neto Admin Panel                        | `admin.neto.com.au`          |
+
+### Service Layer → Neto Data Objects
+
+| NetoStore Service                     | Neto Object        | Access Pattern                                        |
+| ------------------------------------- | ------------------ | ----------------------------------------------------- |
+| `product-service.ts: getProducts()`   | `{{ product }}`    | Automatically available in product templates          |
+| `product-service.ts: getCategories()` | `{{ categories }}` | Available via `{% for cat in categories %}`           |
+| `cart-provider.tsx`                   | `{{ cart }}`       | Global object: `{{ cart.items }}`, `{{ cart.total }}` |
+| `auth-provider.tsx`                   | `{{ customer }}`   | `{{ customer.name }}`, `{{ customer.group }}`         |
+| `config/settings.json`                | `[@settings]`      | Theme configuration via Neto admin                    |
+
+### Pricing Engine → Liquid Logic
+
+| TypeScript Function       | Liquid Equivalent                                                        |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `calculateProductPrice()` | `{% assign discount = price \| times: 0.01 %}`                           |
+| `applyBulkDiscount()`     | `{% if qty >= settings.bulk_threshold %}`                                |
+| `applyMemberDiscount()`   | `{% if customer %}{% assign disc = price \| times: 0.05 %}{% endif %}`   |
+| `calculateShipping()`     | `{% if cart.total > settings.free_shipping_threshold %}`                 |
+| `calculateTax()`          | `{% assign tax = subtotal \| times: settings.tax_rate \| times: 0.01 %}` |
+| `applyPromoCode()`        | Neto's Marketing → Discount Coupons system                               |
+
+### Template Hierarchy Understanding
+
+```
+Neto Theme Structure:
+├── Base Layout (header.html, footer.html)
+│   └── Page Template (page.product.template.html)
+│       ├── {% include 'snippet.product-card' %}     ← Reusable partial
+│       ├── {% include 'snippet.price-display' %}     ← Business logic
+│       └── {% include 'snippet.cart-summary' %}      ← Cart calculation
+└── Config (settings.json)                            ← Admin-editable constants
+
+NetoStore Equivalent:
+├── Layout (layout.tsx + header/footer components)
+│   └── Page Component (page.tsx)
+│       ├── <ProductCard />                           ← React component
+│       ├── calculateProductPrice()                   ← TypeScript function
+│       └── <CartSummary />                           ← Component + pricing engine
+└── Constants (pricing-engine.ts constants)            ← Hardcoded (would be DB/admin)
+```
+
+> 📁 See `/neto-theme-simulator/` for working Liquid templates that implement the same business rules.
+> 📄 See `/docs/liquid-vs-typescript.md` for detailed side-by-side code comparisons.
+
+---
+
+## 🔧 Neto Platform Constraints & Optimization Awareness
+
+### Template Performance Best Practices
+
+**Avoid Nested Loops:** In Liquid, nested `{% for %}` loops are expensive because the template engine processes them server-side on every page load. Unlike Next.js where React handles efficient DOM diffing, Liquid re-renders the entire template output.
 
 ```liquid
-{% if item.price > 500 %}
-  <span class="badge premium">Premium</span>
-{% endif %}
+{# ❌ BAD: Nested loops create O(n²) rendering #}
+{% for product in products %}
+  {% for variant in product.variants %}
+    {% for option in variant.options %}
+      {{ option.name }}
+    {% endfor %}
+  {% endfor %}
+{% endfor %}
 
-{% if item.quantity >= 3 %}
-  {% assign discount = item.subtotal | times: 0.10 %}
-  <span class="discount">Bulk: -{{ discount | money }}</span>
-{% endif %}
-
-{% if customer.logged_in %}
-  {% assign member_discount = item.subtotal | times: 0.05 %}
-{% endif %}
+{# ✅ GOOD: Flatten data before rendering, or use snippets #}
+{% for product in products %}
+  {% include 'snippet.product-card' with product %}
+{% endfor %}
 ```
 
-### Our Approach (TypeScript Engine)
+### Snippet Reusability
 
-We extract the same logic into **pure TypeScript functions**:
+Snippets in Neto function like React components — reusable, parameterized template partials:
 
-```typescript
-// Equivalent to Neto's Liquid conditional blocks
-export function calculateProductPrice(product, quantity, isAuthenticated) {
-  // Rule 1: Product discount (≈ Neto's sale_price tag)
-  // Rule 2: Bulk discount (≈ Neto's quantity break pricing)
-  // Rule 3: Member discount (≈ Neto's customer group pricing)
-  return { originalPrice, finalPrice, discounts, totalDiscount };
-}
+- Extract repeated markup into `/templates/snippets/`
+- Pass data via `{% include 'snippet-name' with variable %}`
+- Keep snippets focused on one responsibility
+- Name descriptively: `snippet.product-card.liquid`, not `card.liquid`
+
+### Asset Organization & CDN
+
+```
+/httpdocs/assets/
+├── css/
+│   ├── theme.css          ← Main stylesheet
+│   └── components/        ← Component-specific styles
+├── js/
+│   ├── theme.js           ← Main JavaScript
+│   └── components/        ← Component scripts
+└── images/
+    ├── logo.svg
+    └── icons/
 ```
 
-### Why This Matters
+- Neto serves static assets via CDN automatically
+- Minify CSS/JS before uploading
+- Use image optimization (WebP format where possible)
+- Reference assets via `{{ asset_url 'theme.css' }}` for CDN paths
 
-| Neto (Liquid)        | NetoStore (TypeScript) |
-| -------------------- | ---------------------- |
-| Logic in templates   | Logic in service layer |
-| Hard to test         | Easy to unit test      |
-| Coupled to rendering | Reusable anywhere      |
-| Template variables   | Typed function returns |
-| Conditional tags     | If/switch statements   |
+### Debugging Slow Liquid Templates
 
-This demonstrates that **the same business rules** can be implemented in modern frameworks while maintaining the concept of template-driven conditional logic.
+1. **Check for N+1 queries:** Avoid loading related data inside loops
+2. **Profile with Neto's debug mode:** Add `?debug=template` to preview URLs
+3. **Reduce object depth:** Access `{{ product.name }}` not `{{ product.category.parent.name }}` repeatedly
+4. **Cache expensive calculations:** Use `{% assign %}` at the top of templates, not inline
+5. **Limit pagination:** Don't load 100+ products per page; use Neto's built-in pagination
+
+### Handling Theme Updates Safely
+
+1. **Version control:** Always keep themes in Git before deploying
+2. **Use Neto's theme editor preview** before publishing changes
+3. **Test on staging domain** if available
+4. **Back up `settings.json`** — this contains all admin-configured theme values
+5. **Never edit core Neto templates** — override with custom snippets instead
+6. **Document custom changes** in a `CHANGELOG.md` within the theme folder
 
 ---
 
@@ -222,6 +308,9 @@ This demonstrates that **the same business rules** can be implemented in modern 
 - ✅ Product detail with SEO metadata and JSON-LD structured data
 - ✅ Cart system (server-side for auth, localStorage for guests)
 - ✅ Dynamic pricing with discount breakdown display
+- ✅ Checkout flow (order review → confirmation)
+- ✅ Tax calculation (10% GST, configurable)
+- ✅ Promo code system (SAVE10, FLAT20, WELCOME15)
 - ✅ Supabase email authentication
 - ✅ Admin panel with product CRUD and stock management
 - ✅ Responsive dark theme with glassmorphism design
@@ -355,6 +444,62 @@ Create a test account via the sign-up page, or pre-create one in Supabase Dashbo
 | Cart           | Full pricing breakdown with discounts    |
 | Admin          | Product management with CRUD operations  |
 | Login          | Authentication with glassmorphism design |
+
+---
+
+## 🎯 How This Project Demonstrates Neto Readiness
+
+### What This Project Proves
+
+1. **I understand conditional business logic in templates.** The pricing engine implements the same rules that Neto enforces through Liquid tags — bulk discounts, member pricing, and stock-based display logic. The `/neto-theme-simulator/` folder contains working Liquid implementations of every rule.
+
+2. **I separate concerns correctly.** Neto themes work best when logic is organized into snippets and templates with clear responsibilities. My architecture mirrors this: services for data, a pricing engine for business rules, and components for display.
+
+3. **I understand Neto's data model.** The type system maps directly to Neto objects (`{{ product }}`, `{{ cart }}`, `{{ customer }}`). See the translation guide above for exact mappings.
+
+4. **I can write production Liquid.** The `neto-theme-simulator/` contains real Liquid templates with correct syntax for conditionals, loops, filters, assign statements, and snippet includes. See `docs/liquid-vs-typescript.md` for side-by-side proof.
+
+5. **I know platform constraints.** The performance and optimization section demonstrates awareness of Neto-specific pitfalls: nested loop costs, CDN asset handling, template debugging, and safe update practices.
+
+### Transferable Skills
+
+| Skill                  | Evidence                       | Neto Application                   |
+| ---------------------- | ------------------------------ | ---------------------------------- |
+| TypeScript/strict mode | Entire codebase                | Quick learning of any typed system |
+| Service layer pattern  | `services/product-service.ts`  | Clean data access in any platform  |
+| Pricing logic          | `lib/pricing-engine.ts`        | Direct translation to Liquid rules |
+| Security (RLS)         | `supabase/schema.sql`          | Understanding permission models    |
+| Responsive design      | TailwindCSS implementation     | Theme customization for any device |
+| E-commerce workflows   | Cart → Checkout → Confirmation | Neto's order lifecycle             |
+
+### Honest Assessment
+
+I have not worked directly with the Neto admin panel or deployed a live Neto theme to production. This project is my way of demonstrating that I understand the **concepts, constraints, and patterns** that make a Neto developer effective. I learn quickly, I write clean code, and I'm ready to apply these skills to the actual platform.
+
+---
+
+## 🗂 Neto Theme Simulator
+
+The `/neto-theme-simulator/` folder contains a realistic Neto theme structure:
+
+```
+neto-theme-simulator/
+├── templates/
+│   ├── pages/
+│   │   ├── page.home.template.html     ← Homepage (Liquid)
+│   │   └── page.product.template.html  ← Product page (Liquid)
+│   └── snippets/
+│       ├── snippet.product-card.liquid  ← Reusable product card
+│       ├── snippet.price-display.liquid ← Full pricing engine in Liquid
+│       └── snippet.cart-summary.liquid  ← Cart totals with tax/shipping
+├── assets/
+│   └── theme.css                       ← Theme stylesheet
+├── config/
+│   └── settings.json                   ← Theme configuration values
+└── README.md                           ← Detailed documentation
+```
+
+Every template uses **real Liquid syntax** with Neto-specific objects. The pricing snippet implements the same sequential discount logic as `pricing-engine.ts`.
 
 ---
 

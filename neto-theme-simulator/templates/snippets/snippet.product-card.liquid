@@ -1,0 +1,106 @@
+<!-- ============================================
+     Neto Snippet: Product Card
+     File: snippet.product-card.liquid
+     
+     Neto equivalent of: src/components/products/product-card.tsx
+     
+     Reusable product card snippet used in grids.
+     Called via: {% include 'snippet.product-card' with product %}
+     ============================================ -->
+
+<div class="product-card" itemscope itemtype="https://schema.org/Product">
+  <a href="/product/{{ product.slug }}" class="product-card__link">
+    
+    <!-- Image -->
+    <div class="product-card__image-wrapper">
+      {% if product.image_url != blank %}
+        <img 
+          src="{{ product.image_url }}" 
+          alt="{{ product.name | escape }}" 
+          class="product-card__image"
+          loading="lazy"
+          itemprop="image"
+        />
+      {% else %}
+        <div class="product-card__placeholder">No Image</div>
+      {% endif %}
+
+      <!-- Badges Layer -->
+      <div class="product-card__badges">
+        {% comment %}
+          Premium badge: Show for products above threshold.
+          Equivalent to NetoStore's Badge component variant="premium"
+        {% endcomment %}
+        {% if product.price > settings.premium_badge_threshold %}
+          <span class="badge badge--premium">Premium</span>
+        {% endif %}
+
+        {% comment %}
+          Sale badge: Show when product has an active discount.
+          Equivalent to NetoStore's Badge component variant="sale"
+        {% endcomment %}
+        {% if product.discount_percentage and product.discount_percentage > 0 %}
+          <span class="badge badge--sale">-{{ product.discount_percentage }}%</span>
+        {% endif %}
+
+        {% comment %}
+          Stock badges: Show stock status.
+          Equivalent to NetoStore's Badge component variant="low-stock"
+        {% endcomment %}
+        {% if product.stock <= 0 %}
+          <span class="badge badge--out-of-stock">Out of Stock</span>
+        {% elsif product.stock <= settings.low_stock_threshold %}
+          <span class="badge badge--low-stock">Only {{ product.stock }} left</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="product-card__content">
+      <span class="product-card__category">
+        {{ product.category | capitalize }}
+      </span>
+      
+      <h3 class="product-card__name" itemprop="name">
+        {{ product.name }}
+      </h3>
+
+      <!-- Price Display -->
+      <div class="product-card__pricing" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+        {% if product.discount_percentage and product.discount_percentage > 0 %}
+          {% comment %}
+            Calculate discounted price using Liquid math.
+            This mirrors pricing-engine.ts calculateProductPrice()
+          {% endcomment %}
+          {% assign discount_multiplier = product.discount_percentage | times: 0.01 %}
+          {% assign discount_amount = product.price | times: discount_multiplier %}
+          {% assign sale_price = product.price | minus: discount_amount %}
+          
+          <span class="product-card__price product-card__price--original">
+            {{ product.price | money }}
+          </span>
+          <span class="product-card__price product-card__price--sale" itemprop="price" content="{{ sale_price }}">
+            {{ sale_price | money }}
+          </span>
+        {% else %}
+          <span class="product-card__price" itemprop="price" content="{{ product.price }}">
+            {{ product.price | money }}
+          </span>
+        {% endif %}
+        
+        <meta itemprop="priceCurrency" content="{{ settings.currency | default: 'AUD' }}" />
+        <meta itemprop="availability" 
+              content="{% if product.stock > 0 %}https://schema.org/InStock{% else %}https://schema.org/OutOfStock{% endif %}" />
+      </div>
+
+      <!-- Member discount teaser for guests -->
+      {% unless customer %}
+        {% if settings.member_discount_enabled %}
+          <p class="product-card__member-hint">
+            🔒 Sign in for {{ settings.member_discount_percentage }}% off
+          </p>
+        {% endif %}
+      {% endunless %}
+    </div>
+  </a>
+</div>

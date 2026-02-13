@@ -1,0 +1,56 @@
+{
+  "theme": {
+    "name": "NetoStore Theme",
+    "version": "1.0.0",
+    "author": "NetoStore Developer",
+    "description": "Custom Neto theme with dynamic pricing, conditional rendering, and responsive design."
+  },
+  "pricing": {
+    "bulk_discount_enabled": true,
+    "bulk_discount_threshold": 3,
+    "bulk_discount_percentage": 10,
+    "member_discount_enabled": true,
+    "member_discount_percentage": 5,
+    "free_shipping_enabled": true,
+    "free_shipping_threshold": 1000,
+    "standard_shipping_cost": 15,
+    "tax_rate": 10,
+    "tax_inclusive": false,
+    "currency": "AUD",
+    "currency_symbol": "$"
+  },
+  "display": {
+    "products_per_page": 12,
+    "show_stock_warning": true,
+    "low_stock_threshold": 5,
+    "premium_badge_threshold": 500,
+    "show_discount_breakdown": true,
+    "show_member_pricing_teaser": true
+  },
+  "badges": {
+    "premium": {
+      "label": "Premium",
+      "color": "#f59e0b",
+      "min_price": 500
+    },
+    "sale": {
+      "label": "Sale",
+      "color": "#ef4444"
+    },
+    "low_stock": {
+      "label": "Low Stock",
+      "color": "#f97316",
+      "threshold": 5
+    },
+    "out_of_stock": {
+      "label": "Out of Stock",
+      "color": "#6b7280"
+    }
+  },
+  "layout": {
+    "header_sticky": true,
+    "show_search": true,
+    "show_cart_badge": true,
+    "footer_columns": 3
+  }
+}

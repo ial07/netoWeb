@@ -1,0 +1,149 @@
+<!-- ============================================
+     Neto Snippet: Price Display
+     File: snippet.price-display.liquid
+     
+     Neto equivalent of: src/lib/pricing-engine.ts
+     
+     Complete pricing breakdown with all discount
+     rules applied sequentially. This is the Liquid
+     translation of calculateProductPrice().
+     
+     Called via: {% include 'snippet.price-display' with product %}
+     Optional: pass quantity variable before including
+     ============================================ -->
+
+{% comment %}
+  ============================================
+  PRICING ENGINE — Liquid Implementation
+  
+  This snippet mirrors the TypeScript pricing engine:
+  1. Product discount (sale price)
+  2. Bulk discount (quantity-based)
+  3. Member discount (authenticated users)
+  
+  Discounts are applied SEQUENTIALLY, not from original base.
+  ============================================
+{% endcomment %}
+
+{% assign qty = quantity | default: 1 %}
+{% assign original_price = product.price | times: qty %}
+{% assign current_price = original_price %}
+
+<!-- ============================================
+     Rule 1: Product Discount
+     TypeScript: if (product.discount_percentage > 0)
+     ============================================ -->
+{% assign has_product_discount = false %}
+{% if product.discount_percentage and product.discount_percentage > 0 %}
+  {% assign has_product_discount = true %}
+  {% assign product_discount_rate = product.discount_percentage | times: 0.01 %}
+  {% assign product_discount_amount = current_price | times: product_discount_rate %}
+  {% assign current_price = current_price | minus: product_discount_amount %}
+{% endif %}
+
+<!-- ============================================
+     Rule 2: Bulk Discount
+     TypeScript: applyBulkDiscount(currentPrice, quantity)
+     ============================================ -->
+{% assign has_bulk_discount = false %}
+{% if settings.bulk_discount_enabled and qty >= settings.bulk_discount_threshold %}
+  {% assign has_bulk_discount = true %}
+  {% assign bulk_discount_rate = settings.bulk_discount_percentage | times: 0.01 %}
+  {% assign bulk_discount_amount = current_price | times: bulk_discount_rate %}
+  {% assign current_price = current_price | minus: bulk_discount_amount %}
+{% endif %}
+
+<!-- ============================================
+     Rule 3: Member Discount
+     TypeScript: applyMemberDiscount(currentPrice, isAuthenticated)
+     ============================================ -->
+{% assign has_member_discount = false %}
+{% if settings.member_discount_enabled and customer %}
+  {% assign has_member_discount = true %}
+  {% assign member_discount_rate = settings.member_discount_percentage | times: 0.01 %}
+  {% assign member_discount_amount = current_price | times: member_discount_rate %}
+  {% assign current_price = current_price | minus: member_discount_amount %}
+{% endif %}
+
+{% assign final_price = current_price %}
+{% assign total_discount = original_price | minus: final_price %}
+{% assign has_any_discount = false %}
+{% if total_discount > 0 %}
+  {% assign has_any_discount = true %}
+{% endif %}
+
+<!-- ============================================
+     Price Display Output
+     ============================================ -->
+<div class="price-display">
+  {% if has_any_discount %}
+    <div class="price-display__prices">
+      <span class="price-display__original">
+        {{ original_price | money }}
+      </span>
+      <span class="price-display__final">
+        {{ final_price | money }}
+      </span>
+      <span class="price-display__savings">
+        Save {{ total_discount | money }}
+      </span>
+    </div>
+  {% else %}
+    <div class="price-display__prices">
+      <span class="price-display__final">
+        {{ final_price | money }}
+      </span>
+    </div>
+  {% endif %}
+
+  <!-- Discount Breakdown (for transparency) -->
+  {% if settings.show_discount_breakdown and has_any_discount %}
+    <div class="price-display__breakdown">
+      <h4>Your Discounts:</h4>
+      <ul class="discount-list">
+        {% if has_product_discount %}
+          <li class="discount-list__item discount-list__item--active">
+            <span class="discount-list__label">
+              {{ product.discount_percentage }}% Product Discount
+            </span>
+            <span class="discount-list__amount">
+              -{{ product_discount_amount | money }}
+            </span>
+          </li>
+        {% endif %}
+
+        {% if has_bulk_discount %}
+          <li class="discount-list__item discount-list__item--active">
+            <span class="discount-list__label">
+              {{ settings.bulk_discount_percentage }}% Bulk Discount 
+              ({{ settings.bulk_discount_threshold }}+ items)
+            </span>
+            <span class="discount-list__amount">
+              -{{ bulk_discount_amount | money }}
+            </span>
+          </li>
+        {% endif %}
+
+        {% if has_member_discount %}
+          <li class="discount-list__item discount-list__item--active">
+            <span class="discount-list__label">
+              {{ settings.member_discount_percentage }}% Member Discount
+            </span>
+            <span class="discount-list__amount">
+              -{{ member_discount_amount | money }}
+            </span>
+          </li>
+        {% elsif settings.member_discount_enabled %}
+          <li class="discount-list__item discount-list__item--locked">
+            <span class="discount-list__label">
+              🔒 {{ settings.member_discount_percentage }}% Member Discount
+            </span>
+            <span class="discount-list__amount">
+              <a href="/login">Sign in</a>
+            </span>
+          </li>
+        {% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>

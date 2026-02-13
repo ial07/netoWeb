@@ -61,7 +61,7 @@ export interface GuestCartItem {
 // ============================================
 
 export interface DiscountBreakdown {
-  type: "product" | "bulk" | "member";
+  type: "product" | "bulk" | "member" | "promo";
   label: string;
   percentage: number;
   amount: number;
@@ -80,10 +80,17 @@ export interface ShippingResult {
   freeShippingThreshold: number;
 }
 
+export interface TaxResult {
+  rate: number;
+  amount: number;
+  label: string;
+}
+
 export interface CartSummaryData {
   subtotal: number;
   pricing: PricingResult;
   shipping: ShippingResult;
+  tax: TaxResult;
   total: number;
   itemCount: number;
 }
@@ -113,4 +120,83 @@ export interface PaginatedResponse<T> {
 export interface AuthUser {
   id: string;
   email: string;
+}
+
+// ============================================
+// Product Variant Types
+// (Maps to Neto's built-in variant system)
+// ============================================
+
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  sku: string;
+  name: string;
+  options: Record<string, string>; // e.g. { size: "L", color: "Black" }
+  price_modifier: number; // Added/subtracted from base price
+  stock: number;
+}
+
+export interface VariantOption {
+  name: string; // e.g. "Size", "Color"
+  values: string[]; // e.g. ["S", "M", "L", "XL"]
+}
+
+// ============================================
+// Promo Code Types
+// (Maps to Neto's coupon/discount code system)
+// ============================================
+
+export interface PromoCode {
+  code: string;
+  discount_type: "percentage" | "fixed";
+  discount_value: number;
+  min_order_amount: number | null;
+  max_uses: number | null;
+  current_uses: number;
+  active: boolean;
+  expires_at: string | null;
+}
+
+export interface PromoResult {
+  valid: boolean;
+  code: string;
+  discount_amount: number;
+  error?: string;
+}
+
+// ============================================
+// Order Types
+// (Maps to Neto's order management system)
+// ============================================
+
+export interface Order {
+  id: string;
+  user_id: string;
+  status:
+    | "pending"
+    | "confirmed"
+    | "processing"
+    | "shipped"
+    | "delivered"
+    | "cancelled";
+  subtotal: number;
+  discount_total: number;
+  tax_amount: number;
+  shipping_cost: number;
+  total: number;
+  promo_code: string | null;
+  created_at: string;
+}
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  discount_amount: number;
+  line_total: number;
+  variant_options: Record<string, string> | null;
 }

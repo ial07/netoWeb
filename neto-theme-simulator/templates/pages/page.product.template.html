@@ -1,0 +1,231 @@
+<!-- ============================================
+     Neto Theme: Product Detail Template
+     File: page.product.template.html
+     
+     Neto equivalent of: src/app/product/[slug]/page.tsx
+     
+     This template renders the full product detail
+     page with images, pricing breakdown, variant
+     selection, and add-to-cart functionality.
+     ============================================ -->
+
+<!-- Breadcrumb Navigation -->
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <ol class="breadcrumb__list">
+    <li class="breadcrumb__item">
+      <a href="/">Home</a>
+    </li>
+    {% if product.category %}
+    <li class="breadcrumb__item">
+      <a href="/category/{{ product.category | handleize }}">
+        {{ product.category | capitalize }}
+      </a>
+    </li>
+    {% endif %}
+    <li class="breadcrumb__item breadcrumb__item--current" aria-current="page">
+      {{ product.name }}
+    </li>
+  </ol>
+</nav>
+
+<article class="product-detail" itemscope itemtype="https://schema.org/Product">
+  <div class="product-detail__layout">
+    <!-- Product Image -->
+    <div class="product-detail__media">
+      <div class="product-detail__image-wrapper">
+        {% if product.image_url != blank %}
+        <img
+          src="{{ product.image_url }}"
+          alt="{{ product.name | escape }}"
+          class="product-detail__image"
+          itemprop="image"
+          loading="eager"
+        />
+        {% else %}
+        <div class="product-detail__placeholder">
+          <span>No Image Available</span>
+        </div>
+        {% endif %}
+
+        <!-- Badges -->
+        <div class="product-detail__badges">
+          {% if product.price > settings.premium_badge_threshold %}
+          <span class="badge badge--premium">
+            {{ settings.badges.premium.label | default: 'Premium' }}
+          </span>
+          {% endif %} {% if product.discount_percentage and
+          product.discount_percentage > 0 %}
+          <span class="badge badge--sale">
+            -{{ product.discount_percentage }}%
+          </span>
+          {% endif %} {% if product.stock <= 0 %}
+          <span class="badge badge--out-of-stock">Out of Stock</span>
+          {% elsif product.stock <= settings.low_stock_threshold %}
+          <span class="badge badge--low-stock">
+            Only {{ product.stock }} left
+          </span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Product Info -->
+    <div class="product-detail__info">
+      <h1 class="product-detail__name" itemprop="name">{{ product.name }}</h1>
+
+      <div class="product-detail__category">
+        <a href="/category/{{ product.category | handleize }}">
+          {{ product.category | capitalize }}
+        </a>
+      </div>
+
+      <!-- Price Display using snippet -->
+      {% include 'snippet.price-display' with product %}
+
+      <!-- Product Description -->
+      <div class="product-detail__description" itemprop="description">
+        {{ product.description }}
+      </div>
+
+      <!-- Variant Selection (if applicable) -->
+      {% if product.variants.size > 0 %}
+      <div class="product-detail__variants">
+        {% for option in product.options %}
+        <div class="variant-selector">
+          <label for="variant-{{ option.name | handleize }}">
+            {{ option.name }}:
+          </label>
+          <select
+            id="variant-{{ option.name | handleize }}"
+            name="variant[{{ option.name }}]"
+            class="variant-selector__select"
+          >
+            {% for value in option.values %}
+            <option value="{{ value }}">{{ value }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Add to Cart -->
+      {% if product.stock > 0 %}
+      <form action="/cart/add" method="post" class="product-detail__cart-form">
+        <input type="hidden" name="product_id" value="{{ product.id }}" />
+
+        <div class="quantity-selector">
+          <label for="quantity">Quantity:</label>
+          <div class="quantity-selector__controls">
+            <button
+              type="button"
+              class="quantity-selector__btn"
+              onclick="decrementQty()"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              id="quantity"
+              name="quantity"
+              value="1"
+              min="1"
+              max="{{ product.stock }}"
+              class="quantity-selector__input"
+            />
+            <button
+              type="button"
+              class="quantity-selector__btn"
+              onclick="incrementQty()"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--full-width">
+          Add to Cart
+        </button>
+
+        <!-- Bulk discount hint -->
+        {% if settings.bulk_discount_enabled %}
+        <p class="product-detail__hint">
+          💡 Buy {{ settings.bulk_discount_threshold }}+ items and get {{
+          settings.bulk_discount_percentage }}% off!
+        </p>
+        {% endif %}
+      </form>
+      {% else %}
+      <div class="product-detail__out-of-stock">
+        <button class="btn btn--disabled btn--full-width" disabled>
+          Out of Stock
+        </button>
+        <p>This product is currently unavailable.</p>
+      </div>
+      {% endif %}
+
+      <!-- Pricing Benefits -->
+      <div class="product-detail__benefits">
+        <h3>Pricing Benefits</h3>
+        <ul class="benefits-list">
+          {% if product.discount_percentage and product.discount_percentage > 0
+          %}
+          <li class="benefits-list__item benefits-list__item--active">
+            ✅ {{ product.discount_percentage }}% product discount applied
+          </li>
+          {% endif %} {% if settings.bulk_discount_enabled %}
+          <li class="benefits-list__item">
+            🔢 {{ settings.bulk_discount_percentage }}% off when you buy {{
+            settings.bulk_discount_threshold }}+ items
+          </li>
+          {% endif %} {% if settings.member_discount_enabled %}
+          <li
+            class="benefits-list__item {% if customer %}benefits-list__item--active{% endif %}"
+          >
+            {% if customer %} ✅ {{ settings.member_discount_percentage }}%
+            member discount active {% else %} 🔒 Sign in for {{
+            settings.member_discount_percentage }}% member discount {% endif %}
+          </li>
+          {% endif %} {% if settings.free_shipping_enabled %}
+          <li class="benefits-list__item">
+            🚚 Free shipping on orders over {{ settings.free_shipping_threshold
+            | money }}
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+
+      <!-- JSON-LD Structured Data -->
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": {{ product.name | json }},
+          "description": {{ product.description | json }},
+          "image": {{ product.image_url | json }},
+          "offers": {
+            "@type": "Offer",
+            "price": {{ product.price }},
+            "priceCurrency": "{{ settings.currency | default: 'AUD' }}",
+            "availability": "{% if product.stock > 0 %}https://schema.org/InStock{% else %}https://schema.org/OutOfStock{% endif %}"
+          }
+        }
+      </script>
+    </div>
+  </div>
+</article>
+
+<script>
+  function decrementQty() {
+    var input = document.getElementById('quantity');
+    if (parseInt(input.value) > 1) {
+      input.value = parseInt(input.value) - 1;
+    }
+  }
+  function incrementQty() {
+    var input = document.getElementById('quantity');
+    if (parseInt(input.value) < {{ product.stock }}) {
+      input.value = parseInt(input.value) + 1;
+    }
+  }
+</script>

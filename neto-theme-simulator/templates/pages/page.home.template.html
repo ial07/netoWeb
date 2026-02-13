@@ -1,0 +1,156 @@
+<!-- ============================================
+     Neto Theme: Homepage Template
+     File: page.home.template.html
+     
+     Neto equivalent of: src/app/page.tsx
+     
+     This template renders the storefront homepage
+     with product grid, category filters, and 
+     promotional sections.
+     ============================================ -->
+
+<!-- Hero Section -->
+<section class="hero">
+  <div class="hero__content">
+    <h1>{{ settings.store_name | default: 'NetoStore' }}</h1>
+    <p class="hero__subtitle">
+      {% if customer %} Welcome back, {{ customer.first_name }}! Enjoy your
+      [@settings:member_discount_percentage@]% member discount. {% else %}
+      Premium tech products with smart pricing {% endif %}
+    </p>
+  </div>
+</section>
+
+<!-- Category Filters -->
+<section class="filters">
+  <nav class="filters__nav" aria-label="Product categories">
+    <a
+      href="/"
+      class="filters__link {% if current_category == blank %}filters__link--active{% endif %}"
+    >
+      All Products
+    </a>
+    {% for category in categories %}
+    <a
+      href="/?category={{ category | handleize }}"
+      class="filters__link {% if current_category == category %}filters__link--active{% endif %}"
+    >
+      {{ category | capitalize }}
+    </a>
+    {% endfor %}
+  </nav>
+
+  <!-- Sort Controls -->
+  <div class="filters__sort">
+    <label for="sort-select">Sort by:</label>
+    <select id="sort-select" name="sort" onchange="this.form.submit()">
+      <option
+        value="newest"
+        {%
+        if
+        current_sort=""
+        ="newest"
+        %}selected{%
+        endif
+        %}
+      >
+        Newest
+      </option>
+      <option
+        value="price_asc"
+        {%
+        if
+        current_sort=""
+        ="price_asc"
+        %}selected{%
+        endif
+        %}
+      >
+        Price: Low to High
+      </option>
+      <option
+        value="price_desc"
+        {%
+        if
+        current_sort=""
+        ="price_desc"
+        %}selected{%
+        endif
+        %}
+      >
+        Price: High to Low
+      </option>
+      <option
+        value="name_asc"
+        {%
+        if
+        current_sort=""
+        ="name_asc"
+        %}selected{%
+        endif
+        %}
+      >
+        Name: A-Z
+      </option>
+    </select>
+  </div>
+</section>
+
+<!-- Product Grid -->
+<section class="product-grid">
+  {% if products.size > 0 %}
+  <div class="product-grid__container">
+    {% for product in products %} {% include 'snippet.product-card' with product
+    %} {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <p>No products found matching your criteria.</p>
+    <a href="/" class="btn btn--primary">View All Products</a>
+  </div>
+  {% endif %}
+</section>
+
+<!-- Pagination -->
+{% if paginate.pages > 1 %}
+<nav class="pagination" aria-label="Product pagination">
+  {% if paginate.previous %}
+  <a
+    href="{{ paginate.previous.url }}"
+    class="pagination__link pagination__link--prev"
+  >
+    &larr; Previous
+  </a>
+  {% endif %} {% for page in paginate.parts %} {% if page.is_link %}
+  <a href="{{ page.url }}" class="pagination__link">{{ page.title }}</a>
+  {% else %}
+  <span class="pagination__link pagination__link--current"
+    >{{ page.title }}</span
+  >
+  {% endif %} {% endfor %} {% if paginate.next %}
+  <a
+    href="{{ paginate.next.url }}"
+    class="pagination__link pagination__link--next"
+  >
+    Next &rarr;
+  </a>
+  {% endif %}
+</nav>
+{% endif %}
+
+<!-- Member Pricing Teaser (for non-logged-in visitors) -->
+{% unless customer %} {% if settings.show_member_pricing_teaser %}
+<section class="member-teaser">
+  <div class="member-teaser__content">
+    <h3>🔓 Unlock Member Pricing</h3>
+    <p>
+      Sign in to get
+      <strong>[@settings:member_discount_percentage@]% off</strong>
+      everything, plus free shipping on orders over {{
+      settings.free_shipping_threshold | money }}.
+    </p>
+    <a href="/login" class="btn btn--secondary">Sign In</a>
+    <a href="/signup" class="btn btn--outline">Create Account</a>
+  </div>
+</section>
+{% endif %} {% endunless %}

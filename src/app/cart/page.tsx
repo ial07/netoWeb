@@ -3,7 +3,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useCart } from "@/components/providers/cart-provider";
-import { calculateProductPrice, calculateShipping } from "@/lib/pricing-engine";
+import {
+  calculateProductPrice,
+  calculateShipping,
+  calculateTax,
+  applyPromoCode,
+} from "@/lib/pricing-engine";
 import Image from "next/image";
 import Link from "next/link";
 import LoadingSpinner from "@/components/ui/loading-spinner";
@@ -28,6 +33,9 @@ export default function CartPage() {
   const [items, setItems] = useState<CartDisplayItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
 
   const fetchCart = useCallback(async () => {
     setLoading(true);
@@ -148,7 +156,7 @@ export default function CartPage() {
     ),
   }));
 
-  const totalAfterDiscounts = itemPricings.reduce(
+  let totalAfterDiscounts = itemPricings.reduce(
     (sum, item) => sum + item.pricing.finalPrice,
     0,
   );
@@ -156,9 +164,37 @@ export default function CartPage() {
     (sum, item) => sum + item.pricing.originalPrice,
     0,
   );
+
+  // Apply promo code
+  let promoDiscount = 0;
+  if (appliedPromo) {
+    const result = applyPromoCode(appliedPromo, totalAfterDiscounts);
+    if (result.valid) {
+      promoDiscount = result.discount_amount;
+      totalAfterDiscounts -= promoDiscount;
+    }
+  }
+
   const totalDiscount = subtotal - totalAfterDiscounts;
+  const tax = calculateTax(totalAfterDiscounts);
   const shipping = calculateShipping(totalAfterDiscounts);
-  const grandTotal = totalAfterDiscounts + shipping.cost;
+  const grandTotal = totalAfterDiscounts + tax.amount + shipping.cost;
+
+  const handleApplyPromo = () => {
+    setPromoError(null);
+    if (!promoInput.trim()) return;
+    const result = applyPromoCode(
+      promoInput,
+      totalAfterDiscounts + promoDiscount,
+    );
+    if (result.valid) {
+      setAppliedPromo(result.code);
+      setPromoError(null);
+    } else {
+      setPromoError(result.error || "Invalid code");
+      setAppliedPromo(null);
+    }
+  };
 
   if (authLoading || loading) {
     return (
@@ -332,6 +368,12 @@ export default function CartPage() {
                   </div>
                 )}
 
+                {/* Tax */}
+                <div className="flex justify-between text-text-secondary">
+                  <span>{tax.label}</span>
+                  <span>${tax.amount.toFixed(2)}</span>
+                </div>
+
                 <div className="flex justify-between text-text-secondary">
                   <span>Shipping</span>
                   <span>
@@ -356,6 +398,50 @@ export default function CartPage() {
                     <span>${grandTotal.toFixed(2)}</span>
                   </div>
                 </div>
+              </div>
+
+              {/* Promo Code Input */}
+              <div className="border-t border-border/50 pt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
+                  Promo Code
+                </h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value)}
+                    placeholder="Enter code"
+                    className="flex-1 h-9 px-3 rounded-lg bg-surface border border-border/50 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <button
+                    onClick={handleApplyPromo}
+                    className="h-9 px-4 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
+                {promoError && (
+                  <p className="text-xs text-danger mt-1">{promoError}</p>
+                )}
+                {appliedPromo && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs text-success">
+                      ✓ {appliedPromo} applied (-${promoDiscount.toFixed(2)})
+                    </span>
+                    <button
+                      onClick={() => {
+                        setAppliedPromo(null);
+                        setPromoInput("");
+                      }}
+                      className="text-xs text-text-muted hover:text-danger"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+                <p className="text-[10px] text-text-muted mt-1">
+                  Try: SAVE10, FLAT20, or WELCOME15
+                </p>
               </div>
 
               {/* Discount breakdown */}
@@ -393,9 +479,12 @@ export default function CartPage() {
                 </div>
               )}
 
-              <button className="w-full py-3 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-semibold text-sm hover:opacity-90 transition-opacity">
+              <Link
+                href="/checkout"
+                className="block w-full py-3 rounded-xl bg-gradient-to-r from-primary to-primary-dark text-white font-semibold text-sm hover:opacity-90 transition-opacity text-center"
+              >
                 Proceed to Checkout
-              </button>
+              </Link>
             </div>
           </div>
         </div>

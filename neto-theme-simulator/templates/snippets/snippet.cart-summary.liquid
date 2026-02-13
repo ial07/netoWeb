@@ -1,0 +1,212 @@
+<!-- ============================================
+     Neto Snippet: Cart Summary
+     File: snippet.cart-summary.liquid
+     
+     Neto equivalent of: src/app/cart/page.tsx
+     combined with calculateCartSummary()
+     
+     Complete cart summary with line items,
+     discount breakdown, tax, and shipping.
+     ============================================ -->
+
+{% comment %}
+  This snippet renders the full cart summary.
+  It applies the same sequential discount logic 
+  as calculateCartSummary() in pricing-engine.ts.
+{% endcomment %}
+
+<div class="cart-summary">
+  {% if cart.items.size > 0 %}
+    
+    <!-- Cart Items -->
+    <div class="cart-summary__items">
+      {% for item in cart.items %}
+        <div class="cart-item">
+          <div class="cart-item__image">
+            <img src="{{ item.product.image_url }}" 
+                 alt="{{ item.product.name | escape }}" 
+                 loading="lazy" />
+          </div>
+          
+          <div class="cart-item__details">
+            <h4 class="cart-item__name">
+              <a href="/product/{{ item.product.slug }}">
+                {{ item.product.name }}
+              </a>
+            </h4>
+            <span class="cart-item__category">
+              {{ item.product.category | capitalize }}
+            </span>
+
+            {% comment %}
+              Calculate per-item pricing with discounts.
+              Same approach as snippet.price-display but for cart context.
+            {% endcomment %}
+            {% assign item_original = item.product.price | times: item.quantity %}
+            {% assign item_current = item_original %}
+
+            {% if item.product.discount_percentage and item.product.discount_percentage > 0 %}
+              {% assign item_disc_rate = item.product.discount_percentage | times: 0.01 %}
+              {% assign item_disc_amt = item_current | times: item_disc_rate %}
+              {% assign item_current = item_current | minus: item_disc_amt %}
+            {% endif %}
+
+            {% if settings.bulk_discount_enabled and item.quantity >= settings.bulk_discount_threshold %}
+              {% assign bulk_rate = settings.bulk_discount_percentage | times: 0.01 %}
+              {% assign bulk_amt = item_current | times: bulk_rate %}
+              {% assign item_current = item_current | minus: bulk_amt %}
+            {% endif %}
+
+            {% if settings.member_discount_enabled and customer %}
+              {% assign mem_rate = settings.member_discount_percentage | times: 0.01 %}
+              {% assign mem_amt = item_current | times: mem_rate %}
+              {% assign item_current = item_current | minus: mem_amt %}
+            {% endif %}
+
+            <div class="cart-item__pricing">
+              {% if item_current != item_original %}
+                <span class="cart-item__price--original">{{ item_original | money }}</span>
+                <span class="cart-item__price--final">{{ item_current | money }}</span>
+              {% else %}
+                <span class="cart-item__price">{{ item_current | money }}</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="cart-item__actions">
+            <!-- Quantity Update -->
+            <form action="/cart/update" method="post" class="cart-item__qty-form">
+              <input type="hidden" name="item_id" value="{{ item.id }}" />
+              <button type="submit" name="quantity" value="{{ item.quantity | minus: 1 }}"
+                      class="qty-btn" {% if item.quantity <= 1 %}disabled{% endif %}>−</button>
+              <span class="cart-item__qty">{{ item.quantity }}</span>
+              <button type="submit" name="quantity" value="{{ item.quantity | plus: 1 }}"
+                      class="qty-btn" {% if item.quantity >= item.product.stock %}disabled{% endif %}>+</button>
+            </form>
+
+            <!-- Remove -->
+            <form action="/cart/remove" method="post" class="cart-item__remove-form">
+              <input type="hidden" name="item_id" value="{{ item.id }}" />
+              <button type="submit" class="cart-item__remove" aria-label="Remove item">
+                ✕
+              </button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <!-- Order Summary -->
+    <div class="cart-summary__totals">
+      <h3>Order Summary</h3>
+
+      {% comment %}
+        Calculate cart-level totals.
+        This mirrors calculateCartSummary() in pricing-engine.ts.
+      {% endcomment %}
+      {% assign cart_subtotal = 0 %}
+      {% assign cart_after_discounts = 0 %}
+      
+      {% for item in cart.items %}
+        {% assign line_original = item.product.price | times: item.quantity %}
+        {% assign line_current = line_original %}
+
+        {% if item.product.discount_percentage and item.product.discount_percentage > 0 %}
+          {% assign d_rate = item.product.discount_percentage | times: 0.01 %}
+          {% assign d_amt = line_current | times: d_rate %}
+          {% assign line_current = line_current | minus: d_amt %}
+        {% endif %}
+
+        {% if settings.bulk_discount_enabled and item.quantity >= settings.bulk_discount_threshold %}
+          {% assign b_rate = settings.bulk_discount_percentage | times: 0.01 %}
+          {% assign b_amt = line_current | times: b_rate %}
+          {% assign line_current = line_current | minus: b_amt %}
+        {% endif %}
+
+        {% if settings.member_discount_enabled and customer %}
+          {% assign m_rate = settings.member_discount_percentage | times: 0.01 %}
+          {% assign m_amt = line_current | times: m_rate %}
+          {% assign line_current = line_current | minus: m_amt %}
+        {% endif %}
+
+        {% assign cart_subtotal = cart_subtotal | plus: line_original %}
+        {% assign cart_after_discounts = cart_after_discounts | plus: line_current %}
+      {% endfor %}
+
+      {% assign cart_total_discount = cart_subtotal | minus: cart_after_discounts %}
+
+      <!-- Subtotal -->
+      <div class="cart-summary__row">
+        <span>Subtotal</span>
+        <span>{{ cart_subtotal | money }}</span>
+      </div>
+
+      <!-- Discounts -->
+      {% if cart_total_discount > 0 %}
+        <div class="cart-summary__row cart-summary__row--discount">
+          <span>Discounts</span>
+          <span>-{{ cart_total_discount | money }}</span>
+        </div>
+      {% endif %}
+
+      <!-- Tax -->
+      {% if settings.tax_rate and settings.tax_rate > 0 %}
+        {% assign tax_rate_decimal = settings.tax_rate | times: 0.01 %}
+        {% assign tax_amount = cart_after_discounts | times: tax_rate_decimal %}
+        <div class="cart-summary__row">
+          <span>Tax ({{ settings.tax_rate }}% GST)</span>
+          <span>{{ tax_amount | money }}</span>
+        </div>
+      {% endif %}
+
+      <!-- Shipping -->
+      {% if settings.free_shipping_enabled and cart_after_discounts > settings.free_shipping_threshold %}
+        <div class="cart-summary__row cart-summary__row--free-shipping">
+          <span>Shipping</span>
+          <span class="free-shipping-badge">FREE</span>
+        </div>
+      {% else %}
+        <div class="cart-summary__row">
+          <span>Shipping</span>
+          <span>{{ settings.standard_shipping_cost | money }}</span>
+        </div>
+        
+        {% if settings.free_shipping_enabled %}
+          {% assign remaining = settings.free_shipping_threshold | minus: cart_after_discounts %}
+          {% if remaining > 0 %}
+            <div class="cart-summary__free-shipping-hint">
+              Add {{ remaining | money }} more for free shipping!
+            </div>
+          {% endif %}
+        {% endif %}
+      {% endif %}
+
+      <!-- Total -->
+      {% assign shipping_cost = settings.standard_shipping_cost %}
+      {% if settings.free_shipping_enabled and cart_after_discounts > settings.free_shipping_threshold %}
+        {% assign shipping_cost = 0 %}
+      {% endif %}
+      {% assign cart_total = cart_after_discounts | plus: shipping_cost %}
+      {% if settings.tax_rate and settings.tax_rate > 0 %}
+        {% assign cart_total = cart_total | plus: tax_amount %}
+      {% endif %}
+
+      <div class="cart-summary__row cart-summary__row--total">
+        <span>Total</span>
+        <span>{{ cart_total | money }}</span>
+      </div>
+
+      <!-- Checkout Button -->
+      <a href="/checkout" class="btn btn--primary btn--full-width">
+        Proceed to Checkout
+      </a>
+    </div>
+
+  {% else %}
+    <!-- Empty Cart State -->
+    <div class="cart-summary__empty">
+      <p>Your cart is empty</p>
+      <a href="/" class="btn btn--primary">Continue Shopping</a>
+    </div>
+  {% endif %}
+</div>

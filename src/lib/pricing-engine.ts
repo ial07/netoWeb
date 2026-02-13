@@ -34,6 +34,9 @@ import type {
   DiscountBreakdown,
   PricingResult,
   ShippingResult,
+  TaxResult,
+  PromoCode,
+  PromoResult,
 } from "@/types";
 
 // ============================================
@@ -171,16 +174,169 @@ export function calculateShipping(total: number): ShippingResult {
   };
 }
 
+// ============================================
+// Tax Calculation
+// (Maps to Neto's GST/tax configuration)
+// ============================================
+
+const DEFAULT_TAX_RATE = 10; // 10% GST (Australian standard)
+
 /**
- * Calculate complete cart summary including all items, discounts, and shipping.
+ * Calculate tax on the given amount.
+ * Simulates Neto's GST calculation which is configurable per-store.
+ *
+ * In Neto, tax is typically applied after discounts but before shipping.
+ *
+ * @param amount - The amount to calculate tax on
+ * @param taxRate - Tax rate as a percentage (default: 10% GST)
+ * @returns TaxResult with rate, amount, and label
+ */
+export function calculateTax(
+  amount: number,
+  taxRate: number = DEFAULT_TAX_RATE,
+): TaxResult {
+  const taxAmount = Math.round(amount * (taxRate / 100) * 100) / 100;
+  return {
+    rate: taxRate,
+    amount: taxAmount,
+    label: `GST (${taxRate}%)`,
+  };
+}
+
+// ============================================
+// Promo Code System
+// (Maps to Neto's coupon/discount code engine)
+// ============================================
+
+/**
+ * Built-in demo promo codes.
+ * In production, these would come from the database.
+ * In Neto, this is managed via Marketing → Discount Coupons.
+ */
+const PROMO_CODES: PromoCode[] = [
+  {
+    code: "SAVE10",
+    discount_type: "percentage",
+    discount_value: 10,
+    min_order_amount: 50,
+    max_uses: null,
+    current_uses: 0,
+    active: true,
+    expires_at: null,
+  },
+  {
+    code: "FLAT20",
+    discount_type: "fixed",
+    discount_value: 20,
+    min_order_amount: 100,
+    max_uses: 100,
+    current_uses: 12,
+    active: true,
+    expires_at: null,
+  },
+  {
+    code: "WELCOME15",
+    discount_type: "percentage",
+    discount_value: 15,
+    min_order_amount: null,
+    max_uses: 1,
+    current_uses: 0,
+    active: true,
+    expires_at: null,
+  },
+];
+
+/**
+ * Validate and apply a promo code.
+ * Simulates Neto's coupon validation logic.
+ *
+ * @param code - The promo code string
+ * @param orderTotal - Current order total before promo
+ * @returns PromoResult with validation status and discount amount
+ */
+export function applyPromoCode(code: string, orderTotal: number): PromoResult {
+  const normalized = code.trim().toUpperCase();
+  const promo = PROMO_CODES.find((p) => p.code === normalized);
+
+  if (!promo) {
+    return {
+      valid: false,
+      code: normalized,
+      discount_amount: 0,
+      error: "Invalid promo code",
+    };
+  }
+
+  if (!promo.active) {
+    return {
+      valid: false,
+      code: normalized,
+      discount_amount: 0,
+      error: "This promo code is no longer active",
+    };
+  }
+
+  if (promo.expires_at && new Date(promo.expires_at) < new Date()) {
+    return {
+      valid: false,
+      code: normalized,
+      discount_amount: 0,
+      error: "This promo code has expired",
+    };
+  }
+
+  if (promo.max_uses !== null && promo.current_uses >= promo.max_uses) {
+    return {
+      valid: false,
+      code: normalized,
+      discount_amount: 0,
+      error: "This promo code has reached its usage limit",
+    };
+  }
+
+  if (promo.min_order_amount !== null && orderTotal < promo.min_order_amount) {
+    return {
+      valid: false,
+      code: normalized,
+      discount_amount: 0,
+      error: `Minimum order of $${promo.min_order_amount.toFixed(2)} required`,
+    };
+  }
+
+  let discount_amount: number;
+  if (promo.discount_type === "percentage") {
+    discount_amount =
+      Math.round(orderTotal * (promo.discount_value / 100) * 100) / 100;
+  } else {
+    discount_amount = Math.min(promo.discount_value, orderTotal);
+  }
+
+  return { valid: true, code: normalized, discount_amount };
+}
+
+/**
+ * Get list of available promo codes (for demo display).
+ */
+export function getAvailablePromoCodes(): PromoCode[] {
+  return PROMO_CODES.filter((p) => p.active);
+}
+
+// ============================================
+// Cart Summary (Full Calculation)
+// ============================================
+
+/**
+ * Calculate complete cart summary including all items, discounts, tax, and shipping.
  *
  * @param items - Array of cart items with product data
  * @param isAuthenticated - Whether user is logged in
- * @returns Complete cart summary with pricing breakdown
+ * @param promoCode - Optional promo code to apply
+ * @returns Complete cart summary with full pricing breakdown
  */
 export function calculateCartSummary(
   items: Array<{ product: Product; quantity: number }>,
   isAuthenticated: boolean,
+  promoCode?: string,
 ) {
   let subtotal = 0;
   const allDiscounts: DiscountBreakdown[] = [];
@@ -199,13 +355,34 @@ export function calculateCartSummary(
     };
   });
 
-  const totalAfterDiscounts = itemPricings.reduce(
+  let totalAfterDiscounts = itemPricings.reduce(
     (sum, item) => sum + item.pricing.finalPrice,
     0,
   );
 
+  // Apply promo code if provided
+  let promoResult: PromoResult | undefined;
+  if (promoCode) {
+    promoResult = applyPromoCode(promoCode, totalAfterDiscounts);
+    if (promoResult.valid) {
+      allDiscounts.push({
+        type: "promo",
+        label: `Promo: ${promoResult.code}`,
+        percentage: 0,
+        amount: promoResult.discount_amount,
+      });
+      totalAfterDiscounts -= promoResult.discount_amount;
+    }
+  }
+
+  // Calculate tax (after all discounts)
+  const tax = calculateTax(totalAfterDiscounts);
+
+  // Calculate shipping
   const shipping = calculateShipping(totalAfterDiscounts);
-  const total = Math.round((totalAfterDiscounts + shipping.cost) * 100) / 100;
+
+  const total =
+    Math.round((totalAfterDiscounts + tax.amount + shipping.cost) * 100) / 100;
 
   return {
     items: itemPricings,
@@ -213,7 +390,9 @@ export function calculateCartSummary(
     totalAfterDiscounts: Math.round(totalAfterDiscounts * 100) / 100,
     totalDiscount: Math.round((subtotal - totalAfterDiscounts) * 100) / 100,
     discounts: allDiscounts,
+    tax,
     shipping,
+    promoResult,
     total,
     itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
   };
